@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Calculadora lex</title>
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <link rel="stylesheet"
+            href="{{ url_for('static', filename='styles/index.css')}}">
+    </head>
+    <body>
+        <div class="container">
+            <div class="container-calculator">
+                <div class="calculator">
+                    <input type="text" id="display" disabled />
+                    <div class="buttons">
+                      <button class="btn" onclick="appendNumber('7')">7</button>
+                      <button class="btn" onclick="appendNumber('8')">8</button>
+                      <button class="btn" onclick="appendNumber('9')">9</button>
+                      <button class="btn operator" onclick="appendOperator('/')">/</button>
+                
+                      <button class="btn" onclick="appendNumber('4')">4</button>
+                      <button class="btn" onclick="appendNumber('5')">5</button>
+                      <button class="btn" onclick="appendNumber('6')">6</button>
+                      <button class="btn operator" onclick="appendOperator('*')">×</button>
+                
+                      <button class="btn" onclick="appendNumber('1')">1</button>
+                      <button class="btn" onclick="appendNumber('2')">2</button>
+                      <button class="btn" onclick="appendNumber('3')">3</button>
+                      <button class="btn operator" onclick="appendOperator('-')">-</button>
+                
+                      <button class="btn" onclick="appendNumber('0')">0</button>
+                      <button class="btn" onclick="appendNumber('.')">.</button>
+                      <button class="btn operator" onclick="calculate()">=</button>
+                      <button class="btn operator" onclick="appendOperator('+')">+</button>
+                
+                      <button class="btn operator clear" onclick="saveCache()">MS</button>
+                      <button class="btn operator clear" onclick="clearValue()">AC</button>
+                      <button class="btn operator clear" onclick="clearDisplay()">C</button>
+                    </div>
+                  </div>
+            </div>
+            <div id="container-tree">
+
+            </div>
+            <div class="container-table">
+                <table border="1" id="tokensTable">
+                    <thead>
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+                    </tbody>
+                </table>
+                <table border="1" id="countTable">
+                    <thead>
+                        <tr>
+                            <th>Clasificación</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <script>
+            let display = document.getElementById('display');
+            let table = document.querySelector('#tokensTable tbody');
+            let count = document.querySelector('#countTable tbody');
+            let cache = "";
+
+            function appendNumber(number) {
+                display.value += number;
+            }
+
+            function appendOperator(operator) {
+            // if (display.value === '') return;
+                display.value += ` ${operator} `;
+            }
+
+            async function calculate() {
+                try {
+                    expression = display.value;
+                    console.log(cache + expression);
+                    expression = cache + expression;
+                    display.value = eval(expression.replace('×', '*').replace('÷', '/'));
+                    cache = "";
+                    const response = await fetch("/calculate", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    body: `expression=${encodeURIComponent(expression)}`,
+                    });
+                    const data = await response.json();
+                    console.log(data[1])
+                    if (response.ok) {
+                        drawTree(data[0].treeJson);
+                        createTable(data[1]);
+                        createCount(data[1]);
+                    } else {
+                        display.value = 'Error';
+                        console.log("Error de solicitud")
+                        console.log(data.error);
+                    } 
+                } catch (error) {
+                    console.log("Error de operacion");
+                    console.log(error);
+                    display.value = 'Error';
+                }
+            }
+
+            function clearDisplay() {
+                display.value = '';
+                table.innerHTML = '';
+                count.innerHTML = '';
+                d3.select("#container-tree").select("svg").remove();
+            }
+
+            function saveCache() {
+                cache = display.value;
+                console.log(cache);
+            }
+
+            function clearValue(){
+                let expression = display.value.substring(0, display.value.length - 1);
+                display.value = expression;
+            }
+
+            function drawTree(treeData) {
+    d3.select("#container-tree").select("svg").remove();
+
+    const width = 600;
+    const height = 400;
+    const svg = d3
+        .select("#container-tree")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+    const g = svg.append("g").attr("transform", "translate(50, 50)");
+
+    const root = d3.hierarchy(treeData);
+
+    const treeLayout = d3.tree().size([width - 100, height - 100]);
+    treeLayout(root);
+
+    // Draw links (edges)
+    g.selectAll(".link")
+        .data(root.links())
+        .enter()
+        .append("line")
+        .attr("class", "link")
+        .attr("x1", (d) => d.source.x)
+        .attr("y1", (d) => d.source.y)
+        .attr("x2", (d) => d.target.x)
+        .attr("y2", (d) => d.target.y)
+        .attr("stroke", "#1e3a5f") // Azul navy oscuro
+        .attr("stroke-width", 2.5)
+        .attr("stroke-dasharray", "3,3"); // Líneas más juntas
+
+    // Draw nodes
+    const nodes = g
+        .selectAll(".node")
+        .data(root.descendants())
+        .enter()
+        .append("g")
+        .attr("class", "node")
+        .attr("transform", (d) => `translate(${d.x},${d.y})`);
+
+    // Circle style
+    nodes.append("circle")
+        .attr("r", 25)
+        .attr("fill", "url(#nodeGradient)") // Gradiente
+        .attr("stroke", "#142c44") // Azul navy más oscuro
+        .attr("stroke-width", 3)
+        .style("filter", "drop-shadow(5px 5px 8px rgba(0,0,0,0.4))"); // Sombra más marcada
+
+    // Define radial gradient for the nodes
+    svg.append("defs")
+        .append("radialGradient")
+        .attr("id", "nodeGradient")
+        .selectAll("stop")
+        .data([
+            { offset: "0%", color: "#27496d" }, // Azul más claro
+            { offset: "100%", color: "#0c1e35" } // Azul navy oscuro
+        ])
+        .enter()
+        .append("stop")
+        .attr("offset", (d) => d.offset)
+        .attr("stop-color", (d) => d.color);
+
+    // Add text to nodes
+    nodes.append("text")
+        .attr("dy", 5)
+        .attr("x", 0)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#ffffff") // Texto blanco
+        .style("font-size", "16px")
+        .style("font-weight", "bold")
+        .style("text-shadow", "2px 2px 4px rgba(0,0,0,0.6)") // Sombra para mejor visibilidad
+        .text((d) => d.data.name);
+}
+
+
+            function createTable(dataTable){
+                table.innerHTML = '';
+                tokens = dataTable.tokens;
+                tokens.forEach((token) => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${token.type}</td>
+                        <td>${token.value}</td>
+                    `;
+                    table.appendChild(row);
+                });
+            }    
+            
+            function createCount(countTable){
+                count.innerHTML = '';
+                const rowInteger = document.createElement('tr');
+                rowInteger.innerHTML = `
+                    <td>Número enteros</td>
+                    <td>${countTable.integer_count}</td>
+                `;
+                count.appendChild(rowInteger);
+
+                const rowOperator = document.createElement('tr');
+                rowOperator.innerHTML = `
+                    <td>Operadores</td>
+                    <td>${countTable.operator_count}</td>
+                `;
+                count.appendChild(rowOperator);
+
+            }
+        </script>
+    </body>
+</html>
